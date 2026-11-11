@@ -1,3 +1,41 @@
 graph TD
-    A[User] --> B[AI System]
-    B --> C[Output / Response]
+    %% Nodes & Components
+    User([User Prompt / Command]) --> Guardrails[Guardrails & Input Validation]
+    
+    subgraph Agentic Engine
+        Guardrails -->|Valid Input| Planner[Agent Planner / Intent Parser]
+        Planner --> Reflection{Check Output / Self-Reflect}
+        Reflection -->|Validation Failed / Conflict| Planner
+    end
+
+    subgraph PawPal System Tools
+        Planner -->|Execute Action| ToolRouter[Tool Execution Router]
+        ToolRouter --> TaskSorter[Task Sorting & Filter Tool]
+        ToolRouter --> RecurrenceEngine[Recurring Task Automation Tool]
+        ToolRouter --> ConflictDetector[Conflict Detection Module]
+    end
+
+    subgraph Logging & Storage
+        ToolRouter --> Logger[(System Logs & Audit Trail)]
+        TaskSorter --> Database[(PawPal Task Store)]
+        RecurrenceEngine --> Database
+        ConflictDetector --> Database
+    end
+
+    subgraph Verification & Evaluation
+        Reflection -->|Validation Passed| ResponseGen[Response Generator]
+        ResponseGen --> UserOutput([Final User Response])
+        
+        %% Testing Loop
+        PytestSuite[Pytest Suite & Reliability Evaluator] -.->|Automated Test Checks| Planner
+        PytestSuite -.->|Verify Deterministic Logic| ToolRouter
+        HumanCheck([Human Reviewer / Evaluation Loop]) -.->|Audit Logs & Results| Logger
+    end
+
+    %% Styling
+    classDef main fill:#2b5c8f,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef tools fill:#1e7e34,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef eval fill:#b05200,stroke:#fff,stroke-width:2px,color:#fff;
+    class Guardrails,Planner,Reflection main;
+    class ToolRouter,TaskSorter,RecurrenceEngine,ConflictDetector tools;
+    class PytestSuite,HumanCheck eval;
