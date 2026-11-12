@@ -4,6 +4,14 @@ from datetime import datetime, time
 import streamlit as st
 
 from pawpal_system import Owner, Pet, Schedule, Task
+from src.rag import RAGRetriever
+
+
+@st.cache_resource
+def get_retriever() -> RAGRetriever:
+    """Loaded once per app process -- RAGRetriever only reads local
+    knowledge_base/ files, so this is entirely offline (no LLM, no API)."""
+    return RAGRetriever("knowledge_base")
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -47,6 +55,8 @@ if "schedule" not in st.session_state:
 
 schedule: Schedule = st.session_state.schedule
 
+retriever = get_retriever()
+
 # --- Owner info -----------------------------------------------------------
 st.subheader("Owner Info")
 owner.name = st.text_input("Owner name", value=owner.name)
@@ -57,12 +67,14 @@ st.divider()
 # --- Add a pet --------------------------------------------------------------
 st.subheader("Pets")
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 with col1:
     new_pet_name = st.text_input("Pet name", value="Mochi")
 with col2:
     new_species = st.selectbox("Species", ["dog", "cat", "other"])
 with col3:
+    new_breed = st.text_input("Breed (optional)", value="", placeholder="e.g. Golden Retriever")
+with col4:
     new_age = st.number_input("Age", min_value=0, max_value=30, value=1)
 
 if st.button("Add pet"):
@@ -71,7 +83,7 @@ if st.button("Add pet"):
             pet_id=str(uuid.uuid4()),
             name=new_pet_name,
             species=new_species,
-            breed="Unknown",
+            breed=new_breed or "Unknown",
             age=int(new_age),
             owner_id=owner.owner_id,
         )
@@ -141,6 +153,36 @@ if selected_pet.tasks:
     )
 else:
     st.info("No tasks yet for this pet. Add one above.")
+
+st.divider()
+
+# --- RAG-grounded care guidelines --------------------------------------------
+# Entirely offline: RAGRetriever only reads knowledge_base/*.md locally, no
+# LLM call, no network -- works the same whether the agent itself is in mock
+# mode, pointed at a local model, or pointed at a paid API.
+st.subheader(f"Care Guidelines for {selected_pet.name}")
+st.caption(
+    "Pulled from PawPal+'s local knowledge base (knowledge_base/) via RAGRetriever."
+)
+
+breed_context = retriever.retrieve_pet_context(selected_pet.species, selected_pet.breed)
+with st.expander(f"General guidance for {selected_pet.species} / {selected_pet.breed}"):
+    st.info(breed_context)
+
+pending_categories = sorted({t.category for t in selected_pet.tasks if not t.is_completed})
+if pending_categories:
+    st.write("Guidance for this pet's active task categories:")
+    for category in pending_categories:
+        query = f"{category} {selected_pet.species} {selected_pet.breed}"
+        snippets = retriever.search_guidelines(query, top_k=2)
+        with st.expander(f"{category.title()} guidance"):
+            if snippets:
+                for snippet in snippets:
+                    st.info(snippet)
+            else:
+                st.caption("No matching guidelines found for this category.")
+else:
+    st.caption("No active tasks yet -- add one above to see task-specific guidance here.")
 
 st.divider()
 
