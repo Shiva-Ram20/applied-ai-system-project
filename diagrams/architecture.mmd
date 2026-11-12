@@ -1,41 +1,102 @@
-graph TD
-    %% Nodes & Components
-    User([User Prompt / Command]) --> Guardrails[Guardrails & Input Validation]
-    
-    subgraph Agentic Engine
-        Guardrails -->|Valid Input| Planner[Agent Planner / Intent Parser]
-        Planner --> Reflection{Check Output / Self-Reflect}
-        Reflection -->|Validation Failed / Conflict| Planner
-    end
+classDiagram
+    %% Unified UML reflecting PawPal+ Agentic Workflow + RAG Architecture.
+    %% Combines owner/schedule/task deterministic core with LLM planning and RAG retrieval tools.
 
-    subgraph PawPal System Tools
-        Planner -->|Execute Action| ToolRouter[Tool Execution Router]
-        ToolRouter --> TaskSorter[Task Sorting & Filter Tool]
-        ToolRouter --> RecurrenceEngine[Recurring Task Automation Tool]
-        ToolRouter --> ConflictDetector[Conflict Detection Module]
-    end
+    class Owner {
+        -owner_id: str
+        -name: str
+        -email: str
+        -phone: str
+        -pets: List~Pet~
+        -schedule: Schedule
+        +add_pet(pet: Pet) None
+        +remove_pet(pet_id: str) None
+        +get_pets() List~Pet~
+        +get_all_tasks() List~Task~
+        +update_contact_info(email: str, phone: str) None
+    }
 
-    subgraph Logging & Storage
-        ToolRouter --> Logger[(System Logs & Audit Trail)]
-        TaskSorter --> Database[(PawPal Task Store)]
-        RecurrenceEngine --> Database
-        ConflictDetector --> Database
-    end
+    class Pet {
+        -pet_id: str
+        -name: str
+        -species: str
+        -breed: str
+        -age: int
+        -weight: float
+        -owner_id: str
+        -tasks: List~Task~
+        -owner: Owner
+        +add_task(task: Task) None
+        +remove_task(task_id: str) None
+        +list_tasks() List~Task~
+        +get_profile() dict
+        +update_profile(**kwargs) None
+    }
 
-    subgraph Verification & Evaluation
-        Reflection -->|Validation Passed| ResponseGen[Response Generator]
-        ResponseGen --> UserOutput([Final User Response])
-        
-        %% Testing Loop
-        PytestSuite[Pytest Suite & Reliability Evaluator] -.->|Automated Test Checks| Planner
-        PytestSuite -.->|Verify Deterministic Logic| ToolRouter
-        HumanCheck([Human Reviewer / Evaluation Loop]) -.->|Audit Logs & Results| Logger
-    end
+    class Task {
+        -task_id: str
+        -pet_id: str
+        -title: str
+        -description: str
+        -category: str
+        -duration_minutes: int
+        -priority: str
+        -due_date: datetime
+        -recurrence: str
+        -scheduled_time: datetime
+        -is_completed: bool
+        -pet: Pet
+        +mark_complete() None
+        +mark_incomplete() None
+        +is_overdue(as_of: datetime) bool
+        +reschedule(new_date: datetime) None
+        +edit_details(**kwargs) None
+        +priority_rank() int
+        +compute_next_occurrence() datetime
+        +end_time() datetime
+        +overlaps_with(other: Task) bool
+    }
 
-    %% Styling
-    classDef main fill:#2b5c8f,stroke:#fff,stroke-width:2px,color:#fff;
-    classDef tools fill:#1e7e34,stroke:#fff,stroke-width:2px,color:#fff;
-    classDef eval fill:#b05200,stroke:#fff,stroke-width:2px,color:#fff;
-    class Guardrails,Planner,Reflection main;
-    class ToolRouter,TaskSorter,RecurrenceEngine,ConflictDetector tools;
-    class PytestSuite,HumanCheck eval;
+    class Schedule {
+        -schedule_id: str
+        -owner: Owner
+        +tasks() List~Task~
+        +get_tasks_for_pet(pet_id: str) List~Task~
+        +get_daily_tasks(date: datetime) List~Task~
+        +get_upcoming_tasks(days: int) List~Task~
+        +get_overdue_tasks(as_of: datetime) List~Task~
+        +sort_by_priority(tasks: List~Task~) List~Task~
+        +sort_by_time(tasks: List~Task~) List~Task~
+        +filter_tasks(pet_id: str, status: str) List~Task~
+        +find_conflicts() List~Tuple~
+        +check_for_conflicts() List~str~
+        +generate_plan(date: datetime, available_minutes: int) List~Task~
+    }
+
+    class RAGRetriever {
+        -knowledge_base_path: str
+        -documents: List~str~
+        +load_documents() None
+        +search_guidelines(query: str, top_k: int) List~str~
+        +retrieve_pet_context(pet_species: str, condition: str) str
+    }
+
+    class AgentPlanner {
+        -retriever: RAGRetriever
+        -schedule: Schedule
+        +parse_intent(user_input: str) dict
+        +plan_workflow(user_input: str) dict
+        +reflect_and_verify(execution_results: dict) bool
+    }
+
+    Owner "1" --> "0..*" Pet : owns
+    Owner "1" --> "1" Schedule : has
+    Pet "1" --> "0..*" Task : has
+    Schedule "1" --> "0..*" Task : reads via owner.get_all_tasks()
+    AgentPlanner --> RAGRetriever : queries for guidelines
+    AgentPlanner --> Schedule : updates/reads via tools
+    RAGRetriever --> Owner : grounds recommendations
+
+    note for Task "priority_rank() + compute_next_occurrence()\ndrive recurring-task calculations.\nend_time() + overlaps_with() back conflict detection."
+    note for RAGRetriever "Injected as a read-only tool\nto pull pet care guidelines and rules\ninto the LLM planning loop."
+    note for AgentPlanner "Separates probabilistic LLM routing\nfrom deterministic Python schedule execution."
